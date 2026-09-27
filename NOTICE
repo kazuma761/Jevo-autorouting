@@ -1,0 +1,16 @@
+Jevo
+Copyright (C) 2026 xinyao (original work: Jevonian, https://github.com/xinyao27/jevonian)
+
+This program is a modified version of Jevonian v0.3.0, released under the
+GNU Affero General Public License v3.0 only (see LICENSE).
+
+Modifications by kazuma761, 2026-09-27:
+- User-facing name changed from "Jevonian" to "Jevo" (web UI, messages, docs).
+  The CLI command, npm package, config paths, environment variables, HTTP
+  headers and virtual model names still use "jevonian".
+- Replaced the logo, favicon and touch icon.
+- Repository links, the "Star on GitHub" link and OpenRouter attribution point
+  at https://github.com/kazuma761/Jevo-autorouting.
+- Removed the Antigravity (Google) provider preset and the Google OAuth client
+  credentials it used; Antigravity tokens can no longer be refreshed.
+- Started a new git history; the original history is available upstream.
