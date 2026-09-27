@@ -269,9 +269,3 @@ pnpm build         # bundle the CLI and build the web UI
 ```
 
 See [development.md](docs/development.md) for the source layout and the release process.
-
-## License
-
-[AGPL-3.0-only](LICENSE). Copyright (C) 2026 xinyao.
-
-Jevo is a modified version of [Jevonian](https://github.com/xinyao27/jevonian) by xinyao, rebranded by kazuma761 on 2026-09-27 and distributed under the same license. The CLI, package and configuration still use the name `jevonian`. See [NOTICE](NOTICE).
