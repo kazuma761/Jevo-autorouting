@@ -95,7 +95,7 @@ export function Layout() {
               <img src="/jevonian-logo.png" alt="" className="size-full object-cover" />
             </span>
             <span className="grid min-w-0 flex-1 text-left leading-tight group-data-[collapsible=icon]:hidden">
-              <span className="truncate text-base font-semibold tracking-tight">jevonian</span>
+              <span className="truncate text-base font-semibold tracking-tight">Jevo</span>
               <span className="truncate text-[11px] text-muted-foreground">Local model router</span>
             </span>
           </NavLink>

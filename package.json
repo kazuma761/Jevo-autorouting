@@ -18,6 +18,7 @@
   },
   "funding": "https://github.com/sponsors/xinyao27",
   "bin": {
+    "jevo": "dist/cli.mjs",
     "jevonian": "dist/cli.mjs"
   },
   "files": [

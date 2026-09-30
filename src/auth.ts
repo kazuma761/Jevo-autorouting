@@ -100,6 +100,24 @@ export function withSessionAffinity(
   headers["x-opencode-session"] ??= incoming["x-opencode-session"] ?? session;
 }
 
+/**
+ * Adds the betas an Anthropic-wire client asked for to the upstream header. Claude Code sends
+ * fields such as `context_management` that Anthropic only accepts under their beta, so
+ * replacing the client's header with ours alone answers 400 "context_management: Extra inputs
+ * are not permitted". Only for Anthropic-to-Anthropic requests, where the body is the client's.
+ */
+export function withClientBetas(
+  headers: Record<string, string>,
+  incoming: Record<string, string | undefined>,
+): void {
+  const requested = incoming["anthropic-beta"];
+  if (!requested) return;
+  for (const beta of requested.split(",")) {
+    const name = beta.trim();
+    if (name) headers["anthropic-beta"] = mergeBeta(headers["anthropic-beta"], name);
+  }
+}
+
 export async function resolveProviderAuth(
   provider: Provider,
   kind: "openai" | "anthropic" | "responses" = "openai",

@@ -54,6 +54,7 @@ import {
   stopService,
   uninstallService,
 } from "./service";
+import { statusLineCommand } from "./statusline";
 import { TunnelManager } from "./tunnel";
 import { formatUpdateNotice, isNewerVersion, UPDATE_INTERVAL_MS, UpdateManager } from "./updates";
 import { applyUserBinPath } from "./user-path";
@@ -1056,6 +1057,9 @@ async function main(): Promise<void> {
     await stopCommand();
   } else if (command === "status") {
     await statusCommand();
+  } else if (command === "statusline") {
+    // Claude Code's status line for `launch claude`; reads the session JSON on stdin.
+    await statusLineCommand();
   } else if (command === "launch") {
     await launchCommand(process.argv.slice(3));
   } else if (command === "serve") {

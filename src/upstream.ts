@@ -11,9 +11,15 @@ import {
 import {
   adaptiveEffort,
   anthropicThinkingSupport,
+  fitAnthropicBodyToModel,
   fitThinkingMaxTokens,
 } from "./anthropic-thinking";
-import { resolveProviderAuth, withSessionAffinity, type AuthResolution } from "./auth";
+import {
+  resolveProviderAuth,
+  withClientBetas,
+  withSessionAffinity,
+  type AuthResolution,
+} from "./auth";
 import { saveBody } from "./bodies";
 import { decodeBody } from "./body-encoding";
 import { askJevRaw } from "./brain";
@@ -1373,6 +1379,8 @@ async function forward(
       return errorResponse(c, meta, 400, `Missing Devin token for provider "${provider.name}"`);
     }
     withSessionAffinity(auth.headers, provider, decision.session, incomingHeaders);
+    const passClientBetas = clientKind === "anthropic" && upstreamKind === "anthropic";
+    if (passClientBetas) withClientBetas(auth.headers, incomingHeaders);
 
     saveBody(requestId, {
       kind: "request",
@@ -1481,7 +1489,7 @@ async function forward(
       );
       // A router-written budget can exceed the client's own `max_tokens`, which Anthropic rejects.
       return wire === "anthropic"
-        ? fitThinkingMaxTokens(native, { clientSetMax: true, maxOutput })
+        ? fitThinkingMaxTokens(fitAnthropicBodyToModel(native), { clientSetMax: true, maxOutput })
         : native;
     };
 
@@ -1608,6 +1616,7 @@ async function forward(
         invalidateOAuthToken(provider.oauthSource);
         const refreshed = await resolveProviderAuth(provider, upstreamKind);
         if (!refreshed.error) {
+          if (passClientBetas) withClientBetas(refreshed.headers, incomingHeaders);
           auth = refreshed;
           ({ response: upstream, text: failureText } = await postUpstream(
             upstreamUrl,
