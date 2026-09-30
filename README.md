@@ -57,6 +57,26 @@ Each request reports the model and provider that served it, the routing reason, 
 
 Jevo routes requests. It does not decompose tasks, manage worktrees, or accept code on your behalf — your agent owns its workflow.
 
+## Screenshots
+
+The local dashboard at `http://127.0.0.1:8787/`.
+
+**Overview:** requests, spend, cache hits and the models that served them.
+
+![Jevo overview](docs/screenshots/overview.png)
+
+**Routing:** the scenarios Jev chooses between, each with its model fallback order.
+
+![Jevo routing](docs/screenshots/routing.png)
+
+**Providers:** connected providers and live subscription quota.
+
+![Jevo providers](docs/screenshots/providers.png)
+
+**Clients:** connect Claude Code, Claude Desktop or Codex in one click.
+
+![Jevo clients](docs/screenshots/clients.png)
+
 ## How it works
 
 ```text
