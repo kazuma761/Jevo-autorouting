@@ -140,3 +140,79 @@ export function adaptiveEffort(
       return "max";
   }
 }
+
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+/** Text of a message's content, which is either a string or an array of blocks. */
+function contentText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((block) => record(block))
+    .filter((block) => block.type === "text" && typeof block.text === "string")
+    .map((block) => block.text as string)
+    .join("\n");
+}
+
+/**
+ * Removes what a model older than the adaptive generation (Haiku 4.5 and earlier) rejects.
+ *
+ * Claude Code writes each request for the model it thinks it is talking to, and behind
+ * `jevonian/auto` that is a current model: adaptive thinking, `output_config.effort`, and a
+ * trailing `role: "system"` message carrying environment context. When the router sends the
+ * turn to Haiku 4.5, each of those is a 400 ("adaptive thinking is not supported on this
+ * model", "This model does not support the effort parameter", "role 'system' is not supported
+ * on this model"). Current models get the body back unchanged.
+ */
+export function fitAnthropicBodyToModel(body: Record<string, unknown>): Record<string, unknown> {
+  if (anthropicThinkingSupport(body.model).adaptive) return body;
+  const next: Record<string, unknown> = { ...body };
+
+  if (record(next.thinking).type === "adaptive") {
+    delete next.thinking;
+    // Edits that prune thinking blocks are rejected once thinking is off.
+    const management = record(next.context_management);
+    if (Array.isArray(management.edits)) {
+      const edits = management.edits.filter((edit) => {
+        const type = record(edit).type;
+        return !(typeof type === "string" && /thinking/i.test(type));
+      });
+      if (edits.length > 0) next.context_management = { ...management, edits };
+      else delete next.context_management;
+    }
+  }
+
+  const output = record(next.output_config);
+  if ("effort" in output) {
+    const { effort: _effort, ...rest } = output;
+    if (Object.keys(rest).length > 0) next.output_config = rest;
+    else delete next.output_config;
+  }
+
+  if (Array.isArray(next.messages)) {
+    const messages = next.messages as unknown[];
+    const system = messages.filter((message) => record(message).role === "system");
+    if (system.length > 0) {
+      next.messages = messages.filter((message) => record(message).role !== "system");
+      const extra = system
+        .map((message) => contentText(record(message).content))
+        .filter((text) => text.length > 0)
+        .map((text) => ({ type: "text", text }));
+      if (extra.length > 0) {
+        const current = next.system;
+        const blocks =
+          typeof current === "string" && current.length > 0
+            ? [{ type: "text", text: current }]
+            : Array.isArray(current)
+              ? current
+              : [];
+        next.system = [...blocks, ...extra];
+      }
+    }
+  }
+  return next;
+}

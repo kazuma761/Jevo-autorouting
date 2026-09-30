@@ -1,0 +1,123 @@
+JEVO - HOW TO RUN
+=================
+
+Jevo is a local model router. Your coding agents (Claude Code, Codex, ...) talk to
+Jevo, and Jev (TypeSafe's routing brain) picks the right model for every turn.
+
+
+PORTS
+-----
+  Dashboard + API:   http://127.0.0.1:8787/
+  Agent endpoint:    http://127.0.0.1:8787/v1
+  Public surface:    http://127.0.0.1:8788   (only /v1, needs a Jevo API key)
+  Health check:      http://127.0.0.1:8787/healthz
+
+
+1. FIRST TIME ONLY - INSTALL AND BUILD
+-------------------------------------
+  Needs Node.js 22+ and pnpm.
+
+    cd ~/Documents/Jevo
+    pnpm install
+    pnpm build
+
+  Build again after any code change:
+
+    cd ~/Documents/Jevo && pnpm build
+
+
+2. STOP THE OLD VERSION (if it is running)
+------------------------------------------
+  The old installed "jevonian" and this Jevo both use port 8787,
+  so only one can run at a time.
+
+    jevonian stop
+
+
+3. START JEVO
+-------------
+  Runs in the background and keeps running after you close the terminal:
+
+    node ~/Documents/Jevo/dist/cli.mjs
+
+  Then open the dashboard:  http://127.0.0.1:8787/
+
+
+4. RUN CLAUDE CODE THROUGH JEVO
+-------------------------------
+    node ~/Documents/Jevo/dist/cli.mjs launch claude --model jevonian/auto
+
+  One-shot question (no interactive session):
+
+    node ~/Documents/Jevo/dist/cli.mjs launch claude --model jevonian/auto -- -p "your question"
+
+  SEE WHICH MODEL JEV PICKED (live, at the bottom of Claude Code):
+
+    ⚡ Jevo → claude-haiku-4-5 · chat · Jev 98% · effort low · 1.2s · my-project · 12% context
+
+    model      the model that actually answered (green Haiku, cyan Sonnet, magenta Opus)
+    chat       the routing scenario Jev chose (plan / execute / utility / chat)
+    Jev 98%    Jev's confidence; "Jev unavailable" means the brain key failed
+    effort     how hard the model was asked to think
+    1.2s       how long that turn took
+
+  It updates after every turn and is switched on automatically by "launch claude".
+  If you already have your own Claude Code status line, yours is kept.
+  To turn Jevo's off:   JEVO_NO_STATUSLINE=1 node ~/Documents/Jevo/dist/cli.mjs launch claude --model jevonian/auto
+
+
+5. EVERYDAY COMMANDS
+--------------------
+  Check it is running:   node ~/Documents/Jevo/dist/cli.mjs status
+  Stop it:               node ~/Documents/Jevo/dist/cli.mjs stop
+  Restart it:            node ~/Documents/Jevo/dist/cli.mjs stop && node ~/Documents/Jevo/dist/cli.mjs
+  Health check:          curl http://127.0.0.1:8787/healthz
+  Usage report:          node ~/Documents/Jevo/dist/cli.mjs report
+  Full diagnosis:        node ~/Documents/Jevo/dist/cli.mjs doctor
+
+
+6. OPTIONAL SHORTCUTS
+---------------------
+  Add these once, then just type "jevo" or "jevo-claude":
+
+    echo "alias jevo='node ~/Documents/Jevo/dist/cli.mjs'" >> ~/.zshrc
+    echo "alias jevo-claude='node ~/Documents/Jevo/dist/cli.mjs launch claude --model jevonian/auto'" >> ~/.zshrc
+    source ~/.zshrc
+
+
+7. OTHER AGENTS (Cursor, scripts, any OpenAI-compatible tool)
+-------------------------------------------------------------
+  Create a key on the dashboard: API keys -> Generate key  (starts with sk-jev-)
+
+    Base URL:  http://127.0.0.1:8787/v1
+    API key:   sk-jev-...
+    Model:     jevonian/auto
+
+  Other model names:  jevonian/plan  jevonian/execute  jevonian/utility  jevonian/chat
+
+
+8. WHERE THINGS LIVE
+--------------------
+  Settings and routing:   ~/.config/jevonian/config.json
+  Provider/brain keys:    ~/.config/jevonian/credentials.json   (never share this)
+  Logs and usage ledger:  ~/.local/share/jevonian/
+  Server log:             ~/.local/share/jevonian/serve.log
+
+
+9. IF SOMETHING GOES WRONG
+--------------------------
+  Dashboard will not open / port 8787 busy:
+      jevonian stop
+      node ~/Documents/Jevo/dist/cli.mjs stop
+      node ~/Documents/Jevo/dist/cli.mjs
+
+  See what the server is doing:
+      tail -40 ~/.local/share/jevonian/serve.log
+
+  Every request goes to Opus / "brain unavailable" in the log:
+      The Jev key is wrong or expired. Dashboard -> Providers -> Routing brain
+      -> Edit -> paste a new TypeSafe key -> Test & measure -> Save brain.
+
+  Claude Code says "context_management: Extra inputs are not permitted":
+      Rebuild so you have the fix:  cd ~/Documents/Jevo && pnpm build
+      then restart Jevo (see section 5).

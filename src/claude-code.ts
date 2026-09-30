@@ -1,5 +1,12 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -330,6 +337,39 @@ export function restoreClaudeCode(): ClaudeCodeStatus {
 }
 
 /**
+ * `--settings` that turn on the Jevo status line for a launched session, or nothing.
+ *
+ * Claude Code's UI shows the model it asked for (`jevonian/auto`), never the one Jev routed
+ * the turn to; the status line (`jevonian statusline`) is what makes each decision visible.
+ * `--settings` merges into the session only, so nothing is written to the user's settings.
+ * A status line the user configured themselves wins, and `JEVO_NO_STATUSLINE=1` opts out.
+ */
+export function statusLineSettingsArgs(cwd = process.cwd()): string[] {
+  if (process.env.JEVO_NO_STATUSLINE) return [];
+  const configured = [
+    join(cwd, ".claude", "settings.json"),
+    join(cwd, ".claude", "settings.local.json"),
+    claudeCodeSettingsPath(),
+  ].some((path) => readJson(path).statusLine !== undefined);
+  if (configured) return [];
+  let cli: string;
+  try {
+    cli = realpathSync(process.argv[1] ?? "");
+  } catch {
+    return [];
+  }
+  const file = join(dataDir(), "claude-statusline.json");
+  try {
+    mkdirSync(dirname(file), { recursive: true });
+    const command = `"${process.execPath}" "${cli}" statusline`;
+    writeFileSync(file, `${JSON.stringify({ statusLine: { type: "command", command } })}\n`);
+  } catch {
+    return [];
+  }
+  return ["--settings", file];
+}
+
+/**
  * Spawns Claude Code with Jevo env vars, Ollama-style. Returns the process
  * exit code (or 1 when the binary is missing).
  */
@@ -343,7 +383,11 @@ export async function launchClaudeCode(options: ClaudeCodeLaunchOptions): Promis
 
   const { primary } = resolveClaudeCodeModels(options.models, options.model);
   const passModel = Boolean(options.model?.trim() || options.models[0]);
-  const args = [...(passModel ? ["--model", primary] : []), ...(options.args ?? [])];
+  const args = [
+    ...(passModel ? ["--model", primary] : []),
+    ...statusLineSettingsArgs(),
+    ...(options.args ?? []),
+  ];
   const env = {
     ...process.env,
     ...claudeCodeEnv({ port: options.port, models: options.models, model: options.model }),

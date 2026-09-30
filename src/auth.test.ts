@@ -4,7 +4,12 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
-import { resolveProviderAuth, withOpenRouterAttribution, withSessionAffinity } from "./auth";
+import {
+  resolveProviderAuth,
+  withClientBetas,
+  withOpenRouterAttribution,
+  withSessionAffinity,
+} from "./auth";
 import { parseConfig, type Provider } from "./config";
 import { invalidateOAuthToken } from "./oauth";
 
@@ -34,6 +39,25 @@ describe("withSessionAffinity", () => {
     const headers: Record<string, string> = {};
     withSessionAffinity(headers, provider("https://api.deepseek.com/v1"), "sess-1", {});
     expect(headers["x-opencode-session"]).toBeUndefined();
+  });
+});
+
+describe("withClientBetas", () => {
+  it("keeps the login beta and adds the client's, without duplicates", () => {
+    const headers: Record<string, string> = { "anthropic-beta": "oauth-2025-04-20" };
+    withClientBetas(headers, {
+      "anthropic-beta":
+        "context-management-2025-06-27, oauth-2025-04-20,interleaved-thinking-2025-05-14",
+    });
+    expect(headers["anthropic-beta"]).toBe(
+      "oauth-2025-04-20,context-management-2025-06-27,interleaved-thinking-2025-05-14",
+    );
+  });
+
+  it("leaves the header alone when the client sent no betas", () => {
+    const headers: Record<string, string> = { "anthropic-beta": "oauth-2025-04-20" };
+    withClientBetas(headers, {});
+    expect(headers["anthropic-beta"]).toBe("oauth-2025-04-20");
   });
 });
 
