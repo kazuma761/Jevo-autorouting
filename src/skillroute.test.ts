@@ -56,4 +56,11 @@ describe("skillroute", () => {
     // A user's own certificate bundle is kept; otherwise the system one is used when present.
     expect(skillRouterEnv({ SSL_CERT_FILE: "/mine.pem" }, "k1").SSL_CERT_FILE).toBe("/mine.pem");
   });
+
+  it("points the router at a local Von with the short recipe only when asked", () => {
+    const env = skillRouterEnv({ JEVO_SKILL_ROUTER_BASE_URL: " http://127.0.0.1:8100 " }, "v1");
+    expect(env.TYPESAFE_BASE_URL).toBe("http://127.0.0.1:8100");
+    expect(env.JEV_ROUTER_RECIPE).toBe("short");
+    expect(skillRouterEnv({}, "k1").JEV_ROUTER_RECIPE).toBeUndefined();
+  });
 });

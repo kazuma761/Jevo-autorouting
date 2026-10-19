@@ -237,7 +237,8 @@ def _run(
     inject_budget = inject_budget_s(env)
     budget = inject_budget if mode == MODE_INJECT else SHADOW_BUDGET_S
     try:
-        result = router_mod.suggest(client, prompt, skills, budget=budget)
+        recipe = router_mod.suggest_short if env.get("JEV_ROUTER_RECIPE") == "short" else router_mod.suggest
+        result = recipe(client, prompt, skills, budget=budget)
         reason = result.reason
     except Exception as exc:  # noqa: BLE001 - fail-open: every failure becomes a logged row
         result = router_mod.Suggestion()

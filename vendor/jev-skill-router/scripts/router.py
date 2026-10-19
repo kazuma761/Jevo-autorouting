@@ -24,6 +24,8 @@ across a silent rewording.
 from __future__ import annotations
 
 import hashlib
+import math
+import re
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -413,6 +415,76 @@ def suggest(
     result.name, result.reason = _decide(
         second["winner"], second["fits"], fits_threshold, fits_margin
     )
+    return result
+
+
+#: Local Von on CPU (``JEV_ROUTER_RECIPE=short``): a small non-generative model is only fast and
+#: sure on a short request and a short menu, so a skill's own quoted trigger phrases decide
+#: first and one Von choice settles the rest among a keyword shortlist. Measured 2026-10-19 in
+#: Jevo's .unlazy/von/team/skill-report.md.
+SHORT_MENU = 5
+SHORT_INSTRUCTIONS = "Which skill, if any, should be loaded for this request?"
+SHORT_NONE = "No skill is needed; answer directly"
+
+
+def _words(text: str) -> str:
+    return " ".join(re.findall(r"[a-z0-9]+", text.lower()))
+
+
+def _stems(text: str) -> set[str]:
+    return {word[:5] for word in _words(text).split() if len(word) >= 3}
+
+
+def suggest_short(
+    client: Client, request: str, roster: Sequence[Skill], *, budget: float = DEFAULT_BUDGET_S
+) -> Suggestion:
+    """At most one skill name from at most one short request: trigger phrase, else Von."""
+    result = Suggestion()
+    if not roster:
+        result.reason = "empty roster"
+        return result
+    said = f" {_words(request)} "
+    hits = [
+        (len(phrase), skill.name)
+        for skill in roster
+        for phrase in map(_words, re.findall(r'"([^"]{3,80})"', skill.description))
+        if phrase and f" {phrase} " in said
+    ]
+    if hits:  # the longest phrase wins: "list the shortcuts" beats "ponytail"
+        result.name = result.winner = max(hits)[1]
+        result.reason = f"trigger phrase -> {result.name}"
+        return result
+
+    # Keyword shortlist, rare words weighing more, so Von never sees a long menu.
+    docs = {skill.name: _stems(f"{skill.name} {skill.description}") for skill in roster}
+    df: dict[str, int] = {}
+    for stems in docs.values():
+        for stem in stems:
+            df[stem] = df.get(stem, 0) + 1
+    asked = _stems(request)
+    score = {
+        name: sum(math.log(1 + len(docs) / df[stem]) for stem in asked & stems)
+        for name, stems in docs.items()
+    }
+    menu = sorted(roster, key=lambda skill: -score[skill.name])[:SHORT_MENU]
+    result.shortlist = [skill.name for skill in menu]
+    criteria = {skill.name: skill.description for skill in menu}
+    criteria[NONE_OPTION] = SHORT_NONE
+    response = client.ask(
+        {"request": request},
+        {"which": {"type": "choice", "instructions": SHORT_INSTRUCTIONS, "criteria": criteria}},
+        model=MODEL,
+        timeout=max(budget, MIN_REQUEST_S),
+    )
+    _add_usage(result.usage, response)
+    which = (response.get("answers") or {}).get("which") or {}
+    winner = which.get("choice")
+    # Off-menu text from the response body is never spoken; NONE_OPTION is a "no".
+    if winner in result.shortlist:
+        result.name = result.winner = winner
+        result.reason = f"von choice {winner}"
+    else:
+        result.reason = "von: no skill needed"
     return result
 
 

@@ -6,3 +6,5 @@ dist/
 *.tgz
 .vite-hooks/
 .claude/
+.von/
+.unlazy/

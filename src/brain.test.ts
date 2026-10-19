@@ -392,3 +392,35 @@ describe("routing instructions", () => {
     expect(model?.instructions ?? "").toContain("preference order");
   });
 });
+
+describe("von brain", () => {
+  it("sends Von only the ask and a short question without none_of_the_above", async () => {
+    let body: { state: Record<string, unknown>; questions: Record<string, { instructions: string; criteria: Record<string, string> }> } | undefined;
+    vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+      body = JSON.parse(String(init.body)) as typeof body;
+      return new Response(JSON.stringify({ answers: { model: { choice: "plan", confidence: 0.8 } } }), { status: 200 });
+    });
+    process.env.VON_TEST_KEY = "k";
+    const brain = { channel: "custom", baseUrl: "http://127.0.0.1:8100/v1/systemone", model: "von-latest", apiKeyEnv: "VON_TEST_KEY", timeoutMs: 1_000, minConfidence: 0.6 };
+    const state = {
+      last_user_message: "x".repeat(2_000),
+      has_tool_results: true,
+      consecutive_failures: 0,
+      recent_messages: [{ role: "user", text: "long" }],
+      routings: [{ id: "plan", label: "Plan", description: "planning" }],
+    };
+
+    const verdict = await askJev({ brain, apiKey: "k", state });
+
+    expect(verdict?.model).toBe("plan");
+    expect(body?.state).toEqual({ last_user_message: "x".repeat(1_000), tool_results_pending: true });
+    expect(Object.keys(body?.questions.model.criteria ?? {})).toEqual(["plan"]);
+    expect(body?.questions.model.instructions).not.toContain("preference order");
+    expect(body?.questions.effort.instructions).toBe("How hard is this request?");
+
+    // A freeform question is the caller's own: its state goes through untouched.
+    await askJev({ brain, apiKey: "k", state, freeform: { name: "kind", instructions: "q", criteria: { a: "A" } } });
+    expect(body?.state).toEqual(state);
+    delete process.env.VON_TEST_KEY;
+  });
+});

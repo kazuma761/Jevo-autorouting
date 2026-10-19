@@ -56,6 +56,13 @@ export function skillRouterEnv(env: NodeJS.ProcessEnv, key: string | undefined):
   };
   // The router only speaks to api.typesafe.ai; a base URL meant for another tool must not leak in.
   delete next.TYPESAFE_BASE_URL;
+  // Opt-in local Von: jev_client still refuses any host but api.typesafe.ai or loopback. Von on
+  // CPU is only fast and sure on a short request and a short menu, hence the short recipe.
+  const local = env.JEVO_SKILL_ROUTER_BASE_URL?.trim();
+  if (local) {
+    next.TYPESAFE_BASE_URL = local;
+    next.JEV_ROUTER_RECIPE = "short";
+  }
   // python.org's macOS Python ships without root certificates until "Install Certificates" is
   // run, so every HTTPS call fails CERTIFICATE_VERIFY_FAILED; the system bundle fixes that.
   if (!next.SSL_CERT_FILE && existsSync(MACOS_CERT_BUNDLE)) next.SSL_CERT_FILE = MACOS_CERT_BUNDLE;
@@ -71,8 +78,10 @@ export async function skillRouteCommand(): Promise<void> {
   for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
   const script = skillRouterScript();
   if (!script) return;
-  const key =
-    process.env.TYPESAFE_API_KEY?.trim() || getCredential(brainCredentialName("typesafe"));
+  // A local Von gets its own key, never the TypeSafe one.
+  const key = process.env.JEVO_SKILL_ROUTER_BASE_URL?.trim()
+    ? process.env.VON_API_KEY?.trim()
+    : process.env.TYPESAFE_API_KEY?.trim() || getCredential(brainCredentialName("typesafe"));
   if (!key) return;
 
   await new Promise<void>((resolve) => {
