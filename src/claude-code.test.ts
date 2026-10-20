@@ -97,6 +97,13 @@ describe("Claude Code settings connect", () => {
       return written.hooks?.UserPromptSubmit?.[0]?.hooks[0]?.command;
     };
     expect(hookCommand(launchSettingsArgs({}, home))).toMatch(/" skillroute$/);
+    const hooks = (
+      JSON.parse(launchSettingsArgs({}, home)[1]!) as {
+        hooks: { SessionStart: Array<{ matcher: string; hooks: Array<{ command: string }> }> };
+      }
+    ).hooks;
+    expect(hooks.SessionStart[0]?.matcher).toBe("compact");
+    expect(hooks.SessionStart[0]?.hooks[0]?.command).toMatch(/" skillroute$/);
     vi.stubEnv("JEVO_SKILL_ROUTER", "off");
     expect(hookCommand(launchSettingsArgs({}, home))).toBeUndefined();
   });

@@ -10,8 +10,9 @@ Each step says what to run and how to check it worked. Do the steps in order.
    review to Opus. The bottom line of Claude Code shows the choice live:
    `⚡ Jevo → claude-haiku-4-5 · chat · Jev 97% · 1.9s · my-project · 12% context`
 2. **Skill routing**: Jev picks the best fit among your installed Claude Code skills
-   (global `~/.claude/skills`, enabled plugins, and the project's `.claude/skills`) and adds
-   one hint line to the turn. Claude still decides whether to use it.
+   (global `~/.claude/skills`, enabled plugins, and the project's `.claude/skills`) and loads
+   that skill's instructions into the turn, once per session. The status line shows it:
+   `… · skill ponytail:ponytail-review · …`
 
 Plain `claude` is not changed. Only `jevo-claude` goes through the router.
 
@@ -160,17 +161,40 @@ The skill router is vendored in `vendor/jev-skill-router/` (MIT, see `VENDORED.m
 `jevo-claude` runs it before every prompt with the same TypeSafe key as the brain. It only
 needs `python3`.
 
-| Variable                     | Effect                                       |
-| ---------------------------- | -------------------------------------------- |
-| `JEVO_SKILL_ROUTER=off`      | do not install the hook                      |
-| `JEV_ROUTER=shadow`          | ask Jev and log, but add nothing to the turn |
-| `JEV_ROUTER_INJECT_BUDGET_S` | time limit per prompt, default `5` (seconds) |
-| `JEVO_SKILL_ROUTER_DIR`      | use another jev-skill-router checkout        |
+How it works, per prompt:
 
-Decisions are logged to `~/.local/share/jevonian/skill-decisions.jsonl`.
+1. Jev ranks every installed skill on one short line each (`skills-index.json`, below), then
+   judges the top three on the start of their `SKILL.md`. Skills installed twice with identical
+   text (for example globally and by a plugin) are shown to Jev once. Skills whose author marked
+   them `disable-model-invocation` (you run them yourself with `/name`) are left out.
+2. If one fits, its `SKILL.md` is put into the turn, as the Skill tool would load it (cut at
+   9,000 characters, with a pointer to read the rest). Claude follows it.
+3. A skill is loaded once per session. Later prompts that fit the same skill add nothing.
+   A prompt that fits a different skill loads that one.
+4. After the conversation is compacted, or every 20 prompts, the next prompt is a **review**:
+   Jev reads the last 3 prompts. The same skill still fits → it is reloaded if compaction
+   removed it. Another fits → that one is loaded. Nothing fits → Claude is told to stop
+   following the old skill.
+5. Prompts longer than 4,000 characters are routed on their first and last 2,000.
 
-What leaves the machine: each routed prompt sends TypeSafe the prompt text, every skill's
-name and description, and the full `SKILL.md` of the top three candidates.
+| Variable                     | Effect                                               |
+| ---------------------------- | ---------------------------------------------------- |
+| `JEVO_SKILL_ROUTER=off`      | do not install the hooks                             |
+| `JEV_ROUTER=shadow`          | ask Jev and log, but add nothing to the turn         |
+| `JEV_ROUTER_HINT=suggest`    | add only a one-line hint instead of the skill's text |
+| `JEV_ROUTER_INJECT_BUDGET_S` | time limit per prompt, default `5` (seconds)         |
+| `JEVO_SKILL_ROUTER_DIR`      | use another jev-skill-router checkout                |
+
+Files in `~/.local/share/jevonian/`:
+
+| File                    | What                                                                                                                                 |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `skills-index.json`     | one line per skill that Jev ranks on. Edit a `line` to help Jev find a skill it misses; your wording is kept when the skill changes. |
+| `skill-sessions/`       | which skill each Claude Code session has loaded                                                                                      |
+| `skill-decisions.jsonl` | every decision: picked skill, action (`load`, `drop`, `none`), time, Jev tokens                                                      |
+
+What leaves the machine: each routed prompt (on a review, the last 3), every skill's index
+line, and the first 1,500 characters of the top three candidates' `SKILL.md` go to TypeSafe.
 
 **Check:**
 
@@ -179,8 +203,14 @@ printf '{"session_id":"t","cwd":"%s","prompt":"review the last commit for bugs"}
   | node dist/cli.mjs skillroute
 ```
 
-prints a `<skill_relevance>` line naming a review skill, if one is installed. No output at all
-means no key, no `python3`, or no skill fit well enough.
+prints JSON whose `additionalContext` contains `<skill name="…">` for a review skill, if one
+is installed. No output at all means no key, no `python3`, or no skill fit well enough.
+
+To watch picks live while you use `jevo-claude`, in a second terminal:
+
+```bash
+tail -n0 -f ~/.local/share/jevonian/skill-decisions.jsonl | jq -r '"\(.suggestion // "no skill") · \(.action // "-") · \(.elapsed_ms) ms"'
+```
 
 ## 9. Final check
 

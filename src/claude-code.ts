@@ -364,21 +364,18 @@ export function launchSettingsArgs(env: Record<string, string>, cwd = process.cw
   if (cli && !process.env.JEVO_NO_STATUSLINE && !configured) {
     settings.statusLine = { type: "command", command: `"${process.execPath}" "${cli}" statusline` };
   }
-  // jev-skill-router (`jevonian skillroute`): Jev names the installed skill that fits the
-  // prompt, one line in the turn's context. Separate from model routing; JEVO_SKILL_ROUTER=off.
+  // jev-skill-router (`jevonian skillroute`): Jev picks the installed skill that fits the
+  // prompt and its SKILL.md is loaded into the turn. Separate from model routing; JEVO_SKILL_ROUTER=off.
   if (cli && process.env.JEVO_SKILL_ROUTER !== "off") {
+    const hook = {
+      type: "command",
+      command: `"${process.execPath}" "${cli}" skillroute`,
+      timeout: 8,
+    };
+    // After compaction the loaded skill's text is gone; the next prompt reviews and reloads it.
     settings.hooks = {
-      UserPromptSubmit: [
-        {
-          hooks: [
-            {
-              type: "command",
-              command: `"${process.execPath}" "${cli}" skillroute`,
-              timeout: 8,
-            },
-          ],
-        },
-      ],
+      UserPromptSubmit: [{ hooks: [hook] }],
+      SessionStart: [{ matcher: "compact", hooks: [hook] }],
     };
   }
   // Inline JSON, not a shared file: two sessions launched with different options would

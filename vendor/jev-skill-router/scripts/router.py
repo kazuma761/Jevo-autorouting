@@ -27,6 +27,7 @@ import hashlib
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Protocol
 
 from scripts.roster import Skill
@@ -37,7 +38,7 @@ MODEL = "jev-1.13.0"
 #: Bumped whenever the router changes what it asks about, not only how it asks: 0.2.0 sends
 #: whole descriptions and whole bodies where 0.1.0 sent 60- and 700-character prefixes, and a
 #: reader joining rows across that change would otherwise average two distributions.
-ROUTER_VERSION = "0.2.0"
+ROUTER_VERSION = "0.2.0+jevo.1"
 
 SHORTLIST = 3
 GATE_THRESHOLD = 0.30
@@ -414,6 +415,32 @@ def suggest(
         second["winner"], second["fits"], fits_threshold, fits_margin
     )
     return result
+
+
+#: Hook context is capped by the host; a longer SKILL.md is cut here and Claude is told where
+#: to read the rest.
+MAX_LOADED_SKILL_CHARS = 9000
+
+
+def loaded_skill_block(name: str, path: str, body: str) -> str:
+    """Jevo's directive mode: the chosen skill's SKILL.md itself, the way the Skill tool loads
+    it. A pointer alone ("invoke the skill") was ignored in testing even with the Skill tool
+    present; instructions already in context get followed. ``name`` is a roster name and the
+    body is the local file, so the API response cannot widen what is said.
+    """
+    base = str(Path(path).parent)
+    if len(body) > MAX_LOADED_SKILL_CHARS:
+        body = (
+            body[:MAX_LOADED_SKILL_CHARS]
+            + f"\n\n[... truncated. Before acting, read the full skill with the Read tool: {path}]"
+        )
+    return (
+        f"\n\n<skill_relevance>\nThe skill router matched this request to the installed skill "
+        f"`{name}` and loaded it below, as the Skill tool would. Follow these instructions for "
+        f"this request. Skip them only if they clearly do not apply to what the user asked.\n"
+        f"Base directory for this skill: {base}\n\n<skill name=\"{name}\">\n{body}\n</skill>\n"
+        f"</skill_relevance>"
+    )
 
 
 def suggestion_block(name: str) -> str:
