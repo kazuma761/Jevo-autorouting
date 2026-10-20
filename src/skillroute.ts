@@ -75,24 +75,31 @@ export async function skillRouteCommand(): Promise<void> {
     process.env.TYPESAFE_API_KEY?.trim() || getCredential(brainCredentialName("typesafe"));
   if (!key) return;
 
-  await new Promise<void>((resolve) => {
-    const child = spawn("python3", [script], {
-      env: skillRouterEnv(process.env, key),
-      stdio: ["pipe", "pipe", "ignore"],
-    });
+  const out = await runRouter(script, Buffer.concat(chunks), skillRouterEnv(process.env, key));
+  if (out) process.stdout.write(out);
+}
+
+/** The router's stdout on a clean exit, else nothing: a crash, hang or missing Python stays silent. */
+export function runRouter(
+  script: string,
+  input: Buffer,
+  env: NodeJS.ProcessEnv,
+  timeoutMs = HOOK_TIMEOUT_MS,
+): Promise<Buffer | undefined> {
+  return new Promise((resolve) => {
+    const child = spawn("python3", [script], { env, stdio: ["pipe", "pipe", "ignore"] });
     const out: Buffer[] = [];
-    const timer = setTimeout(() => child.kill("SIGKILL"), HOOK_TIMEOUT_MS);
+    const timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
     child.stdout.on("data", (chunk: Buffer) => out.push(chunk));
     child.on("error", () => {
       clearTimeout(timer);
-      resolve();
+      resolve(undefined);
     });
     child.on("close", (code) => {
       clearTimeout(timer);
-      // Only a clean run may speak; the router prints nothing unless it has a suggestion.
-      if (code === 0) process.stdout.write(Buffer.concat(out));
-      resolve();
+      resolve(code === 0 ? Buffer.concat(out) : undefined);
     });
-    child.stdin.end(Buffer.concat(chunks));
+    child.stdin.on("error", () => {}); // a router that exits without reading must not crash the hook
+    child.stdin.end(input);
   });
 }

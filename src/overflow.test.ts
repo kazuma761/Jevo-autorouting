@@ -346,6 +346,50 @@ describe("context overflow", () => {
     expect(decision.contextOverflow).toBeFalsy();
   });
 
+  it("keeps a routing whose fitting model was skipped only for effort, without the too-small one", async () => {
+    vi.stubGlobal("fetch", async () => {
+      const answers = {
+        model: { choice: "chat", confidence: 0.9 },
+        effort: { choice: "low", confidence: 0.9 },
+      };
+      return new Response(JSON.stringify({ model: "jev", answers }), { status: 200 });
+    });
+    const mixed = parseConfig({
+      defaultProvider: "sub",
+      providers: [
+        {
+          name: "sub",
+          type: "openai",
+          baseUrl: "http://127.0.0.1:1/v1",
+          apiKey: "test",
+          models: ["tiny-model", "shallow-model"],
+        },
+      ],
+      routing: {
+        mode: "auto",
+        tiers: { chat: ["tiny-model", "shallow-model"] },
+        brains: [{ channel: "typesafe", apiKeyEnv: "TYPESAFE_API_KEY" }],
+        capacities: {
+          "tiny-model": { contextWindow: 2_000 },
+          "shallow-model": { contextWindow: 1_000_000, efforts: ["low"] },
+        },
+      },
+    });
+
+    const { decideRoute } = await import("./routing");
+    const decision = await decideRoute({
+      config: mixed,
+      body: longBody(),
+      headers: { "x-jevonian-effort": "high" },
+      store: new SessionStore(60_000),
+      kind: "openai",
+      now: 1_000,
+    });
+    if ("error" in decision) throw new Error(decision.error);
+    expect(decision.contextOverflow).toBeFalsy();
+    expect(decision.model).toBe("shallow-model");
+  });
+
   it("flags the overflow and compacts the history before routing again", async () => {
     const seen: Array<{ keys: string[]; messageCount: number }> = [];
     vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {

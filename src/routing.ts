@@ -1440,7 +1440,12 @@ export async function decideRoute(
       requiredEffort: true,
     });
     allSkipped.push(...skipped);
-    const offered = usable.length > 0 ? usable : capable;
+    // A model skipped only for effort still beats one that cannot hold the conversation.
+    const tooSmall = new Set(
+      skipped.filter((s) => s.reason === "context").map((s) => `${s.provider}\0${s.model}`),
+    );
+    const fitting = capable.filter((c) => !tooSmall.has(`${c.provider}\0${c.model}`));
+    const offered = usable.length > 0 ? usable : fitting.length > 0 ? fitting : capable;
     const offeredToBrain = cacheCandidates(
       offered,
       previous,
@@ -1455,7 +1460,7 @@ export async function decideRoute(
       candidates: offered,
       offeredToBrain,
       skipped,
-      fitsContext: usable.length > 0 || !skipped.some((entry) => entry.reason === "context"),
+      fitsContext: capable.length === 0 || fitting.length > 0,
     });
   };
 

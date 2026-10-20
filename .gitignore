@@ -6,3 +6,4 @@ dist/
 *.tgz
 .vite-hooks/
 .claude/
+__pycache__/

@@ -80,7 +80,7 @@ describe("Claude Code settings connect", () => {
     const env = claudeCodeEnv({ port: 8787, models: ["jevonian/auto"] });
     const args = launchSettingsArgs({ ...env, ENABLE_TOOL_SEARCH: "true" }, home);
     expect(args[0]).toBe("--settings");
-    const written = JSON.parse(readFileSync(args[1]!, "utf8")) as {
+    const written = JSON.parse(args[1]!) as {
       env: Record<string, string>;
       statusLine?: unknown;
     };
@@ -91,7 +91,7 @@ describe("Claude Code settings connect", () => {
 
   it("adds the skill-router hook to the launch settings unless JEVO_SKILL_ROUTER=off", () => {
     const hookCommand = (args: string[]) => {
-      const written = JSON.parse(readFileSync(args[1]!, "utf8")) as {
+      const written = JSON.parse(args[1]!) as {
         hooks?: { UserPromptSubmit?: Array<{ hooks: Array<{ command: string }> }> };
       };
       return written.hooks?.UserPromptSubmit?.[0]?.hooks[0]?.command;

@@ -381,10 +381,9 @@ export function launchSettingsArgs(env: Record<string, string>, cwd = process.cw
       ],
     };
   }
-  const file = join(dataDir(), "claude-launch-settings.json");
-  mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, `${JSON.stringify(settings)}\n`, { mode: 0o600 });
-  return ["--settings", file];
+  // Inline JSON, not a shared file: two sessions launched with different options would
+  // overwrite each other's file. Nothing secret is in it (the local token is fixed).
+  return ["--settings", JSON.stringify(settings)];
 }
 
 /**

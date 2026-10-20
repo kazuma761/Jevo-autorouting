@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { skillRouterEnv, skillRouterScript } from "./skillroute";
+import { runRouter, skillRouterEnv, skillRouterScript } from "./skillroute";
 
 describe("skillroute", () => {
   let root: string;
@@ -55,5 +55,37 @@ describe("skillroute", () => {
     expect(skillRouterEnv({ JEV_ROUTER: "shadow" }, "k1").JEV_ROUTER).toBe("shadow");
     // A user's own certificate bundle is kept; otherwise the system one is used when present.
     expect(skillRouterEnv({ SSL_CERT_FILE: "/mine.pem" }, "k1").SSL_CERT_FILE).toBe("/mine.pem");
+  });
+
+  it("passes a clean router's output through and stays silent when it fails, hangs or is missing", async () => {
+    const script = (name: string, body: string) => {
+      const path = join(root, `${name}.py`);
+      writeFileSync(path, body);
+      return path;
+    };
+    const env = { PATH: process.env.PATH };
+    const ok = script("ok", "import sys; sys.stdin.read(); print('hint')");
+    expect((await runRouter(ok, Buffer.from("{}"), env))?.toString()).toBe("hint\n");
+    const fails = script("fails", "print('half a hint'); raise SystemExit(1)");
+    expect(await runRouter(fails, Buffer.from("{}"), env)).toBeUndefined();
+    const hangs = script("hangs", "import time; print('late'); time.sleep(30)");
+    expect(await runRouter(hangs, Buffer.from("{}"), env, 300)).toBeUndefined();
+    expect(await runRouter(ok, Buffer.from("{}"), { PATH: join(root, "no-python") })).toBeUndefined();
+  });
+
+  it("passes a clean router's output through and stays silent when it fails, hangs or is missing", async () => {
+    const script = (name: string, body: string) => {
+      const path = join(root, `${name}.py`);
+      writeFileSync(path, body);
+      return path;
+    };
+    const env = { PATH: process.env.PATH };
+    const ok = script("ok", "import sys; sys.stdin.read(); print('hint')");
+    expect((await runRouter(ok, Buffer.from("{}"), env))?.toString()).toBe("hint\n");
+    const fails = script("fails", "print('half a hint'); raise SystemExit(1)");
+    expect(await runRouter(fails, Buffer.from("{}"), env)).toBeUndefined();
+    const hangs = script("hangs", "import time; print('late'); time.sleep(30)");
+    expect(await runRouter(hangs, Buffer.from("{}"), env, 300)).toBeUndefined();
+    expect(await runRouter(ok, Buffer.from("{}"), { PATH: join(root, "no-python") })).toBeUndefined();
   });
 });
