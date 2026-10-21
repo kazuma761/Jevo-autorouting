@@ -90,13 +90,12 @@ describe("Claude Code settings connect", () => {
     expect(written.env.ENABLE_TOOL_SEARCH).toBe("true");
   });
 
-  it("drops an inherited Claude sign-in that would outrank Jevo's token", () => {
+  it("drops the desktop app's entrypoint so the launch signs in with Jevo's token", () => {
     const env = launchEnv(
-      {
-        PATH: "/bin",
-      },
+      { PATH: "/bin", CLAUDE_CODE_ENTRYPOINT: "claude-desktop" },
       claudeCodeEnv({ port: 8787, models: ["jevonian/auto"] }),
     );
+    expect(env.CLAUDE_CODE_ENTRYPOINT).toBeUndefined();
     expect(env.ANTHROPIC_AUTH_TOKEN).toBe("jevonian-local");
     expect(env.PATH).toBe("/bin");
   });
