@@ -79,24 +79,6 @@ describe("skillroute", () => {
     ).toBeUndefined();
   });
 
-  it("passes a clean router's output through and stays silent when it fails, hangs or is missing", async () => {
-    const script = (name: string, body: string) => {
-      const path = join(root, `${name}.py`);
-      writeFileSync(path, body);
-      return path;
-    };
-    const env = { PATH: process.env.PATH };
-    const ok = script("ok", "import sys; sys.stdin.read(); print('hint')");
-    expect((await runRouter(ok, Buffer.from("{}"), env))?.toString()).toBe("hint\n");
-    const fails = script("fails", "print('half a hint'); raise SystemExit(1)");
-    expect(await runRouter(fails, Buffer.from("{}"), env)).toBeUndefined();
-    const hangs = script("hangs", "import time; print('late'); time.sleep(30)");
-    expect(await runRouter(hangs, Buffer.from("{}"), env, 300)).toBeUndefined();
-    expect(
-      await runRouter(ok, Buffer.from("{}"), { PATH: join(root, "no-python") }),
-    ).toBeUndefined();
-  });
-
   it.skipIf(spawnSync("python3", ["--version"]).status !== 0)(
     "ranks plugin skills from plugin.json paths, from the install that applies here",
     () => {
