@@ -387,6 +387,24 @@ export function launchSettingsArgs(env: Record<string, string>, cwd = process.cw
 }
 
 /**
+ * Inherited from a parent Claude Code session (a tmux server started by the desktop app),
+ * `CLAUDE_CODE_ENTRYPOINT=claude-desktop` makes the launched session sign in like the desktop
+ * app instead of with `ANTHROPIC_AUTH_TOKEN`, and Jevo answered 401 on every turn. A binary
+ * search over that tmux env found it alone causes this (2026-10-21); Claude Code sets it anew.
+ */
+const OUTRANKING_AUTH = ["CLAUDE_CODE_ENTRYPOINT"];
+
+/** The launched session's environment: the shell's, minus outranking sign-ins, plus Jevo's. */
+export function launchEnv(
+  base: NodeJS.ProcessEnv,
+  jevoEnv: Record<string, string>,
+): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...base, ...jevoEnv };
+  for (const name of OUTRANKING_AUTH) delete env[name];
+  return env;
+}
+
+/**
  * Spawns Claude Code with Jevo env vars, Ollama-style. Returns the process
  * exit code (or 1 when the binary is missing).
  */
@@ -412,7 +430,7 @@ export async function launchClaudeCode(options: ClaudeCodeLaunchOptions): Promis
     ...launchSettingsArgs(jevoEnv),
     ...(options.args ?? []),
   ];
-  const env = { ...process.env, ...jevoEnv };
+  const env = launchEnv(process.env, jevoEnv);
 
   return await new Promise<number>((resolve, reject) => {
     const child = spawn(claudePath, args, {

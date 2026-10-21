@@ -9,6 +9,7 @@ import {
   claudeCodeEnv,
   claudeCodeModelLabel,
   claudeCodeSettingsPath,
+  launchEnv,
   launchSettingsArgs,
   resolveClaudeCodeModels,
   restoreClaudeCode,
@@ -87,6 +88,17 @@ describe("Claude Code settings connect", () => {
     expect(written.env.ANTHROPIC_BASE_URL).toBe("http://127.0.0.1:8787");
     expect(written.env.ANTHROPIC_AUTH_TOKEN).toBe("jevonian-local");
     expect(written.env.ENABLE_TOOL_SEARCH).toBe("true");
+  });
+
+  it("drops an inherited Claude sign-in that would outrank Jevo's token", () => {
+    const env = launchEnv(
+      {
+        PATH: "/bin",
+      },
+      claudeCodeEnv({ port: 8787, models: ["jevonian/auto"] }),
+    );
+    expect(env.ANTHROPIC_AUTH_TOKEN).toBe("jevonian-local");
+    expect(env.PATH).toBe("/bin");
   });
 
   it("adds the skill-router hook to the launch settings unless JEVO_SKILL_ROUTER=off", () => {
