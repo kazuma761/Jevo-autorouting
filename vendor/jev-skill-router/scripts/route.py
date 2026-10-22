@@ -29,6 +29,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts import decision_log  # noqa: E402
+from scripts import jevo_session
 from scripts import roster as roster_mod
 from scripts import router as router_mod
 from scripts.jev_client import JevClient, resolve_api_key  # noqa: E402
@@ -40,10 +41,6 @@ MODE_INJECT = "inject"
 DEFAULT_MODE = MODE_SHADOW
 MODES = (MODE_OFF, MODE_SHADOW, MODE_SHADOW_CHILD, MODE_INJECT)
 
-#: Longer prompts are pasted material — a log, a diff, a whole file. What such a prompt needs
-#: is read out of the pasted text, not out of a roster, and the request is the one part of a
-#: Jev call that is charged twice: ``state`` rides along with every chunk of a split roster.
-MAX_PROMPT_CHARS = 4000
 #: Wall clock for the whole inject path. A prompt waits for this; nothing else is worth it.
 INJECT_BUDGET_S = 3.0
 
@@ -123,8 +120,6 @@ def skip_reason(prompt: str, cwd: str, api_key: str, prefixes: Sequence[str] = (
         return "empty-prompt"
     if prompt.startswith("/"):
         return "slash-command"
-    if len(prompt) > MAX_PROMPT_CHARS:
-        return "prompt-too-long"
     if not api_key:
         return "no-api-key"
     if in_sandbox(cwd, prefixes):
@@ -193,6 +188,9 @@ def route(
         return "", None
     if not isinstance(payload, dict):
         return "", None
+    if payload.get("hook_event_name") == "SessionStart":
+        jevo_session.mark_compacted(env, payload)
+        return "", None
 
     # An unrecognised value is a typo, not a request to run the most expensive path. Falling
     # through to `_run` would make `JEV_ROUTER=OFF` block every prompt for up to 30 seconds
@@ -231,13 +229,26 @@ def _run(
         settings_path=(config / "settings.json") if config else None,
         cwd=Path(cwd) if cwd else None,
     )
+    skills = jevo_session.dedupe(skills)
+    index = (env.get("JEV_ROUTER_INDEX") or "").strip()
+    ranked = (
+        jevo_session.ranking_roster(skills, jevo_session.load_index(Path(index), skills))
+        if index
+        else skills
+    )
+    state_file = jevo_session.state_path(env, str(payload.get("session_id") or ""))
+    state = jevo_session.read_state(state_file)
+    reviewing = jevo_session.review_due(state)
+    request = (
+        jevo_session.review_request(payload, prompt) if reviewing else jevo_session.clip_prompt(prompt)
+    )
     if client is None:
         client = JevClient(resolve_api_key(env), base_url=env.get("TYPESAFE_BASE_URL"))
 
     inject_budget = inject_budget_s(env)
     budget = inject_budget if mode == MODE_INJECT else SHADOW_BUDGET_S
     try:
-        result = router_mod.suggest(client, prompt, skills, budget=budget)
+        result = router_mod.suggest(client, request, ranked, budget=budget)
         reason = result.reason
     except Exception as exc:  # noqa: BLE001 - fail-open: every failure becomes a logged row
         result = router_mod.Suggestion()
@@ -278,15 +289,37 @@ def _run(
         chunks=result.chunks,
         usage=result.usage,
     )
-    if mode != MODE_INJECT or result.name is None:
+    if mode != MODE_INJECT:
+        return "", record
+    # A failed or late answer says nothing about fit: leave the session as it was.
+    if reason.startswith(("error:", "over budget")):
+        return "", record
+    action, name = jevo_session.decide(state, result.name, reviewing)
+    jevo_session.write_state(state_file, state)
+    record["action"] = action
+    record["reviewed"] = reviewing
+    if action == "load" and name is not None:
+        context = _hint(name, skills, env)
+    elif action == "drop" and name is not None:
+        context = jevo_session.drop_block(name)
+    else:
         return "", record
     envelope = {
         "hookSpecificOutput": {
             "hookEventName": "UserPromptSubmit",
-            "additionalContext": router_mod.suggestion_block(result.name),
+            "additionalContext": context,
         }
     }
     return json.dumps(envelope, ensure_ascii=False), record
+
+
+def _hint(name: str, skills: Sequence[roster_mod.Skill], env: Mapping[str, str]) -> str:
+    """``JEV_ROUTER_HINT=directive`` loads the skill itself; otherwise the cookbook's one line."""
+    if env.get("JEV_ROUTER_HINT") == "directive":
+        skill = next((s for s in skills if s.name == name), None)
+        if skill is not None:
+            return router_mod.loaded_skill_block(skill.name, skill.path, skill.body)
+    return router_mod.suggestion_block(name)
 
 
 def write_log(env: Mapping[str, str], record: dict[str, Any] | None) -> bool:

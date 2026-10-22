@@ -9,6 +9,7 @@ import {
   claudeCodeEnv,
   claudeCodeModelLabel,
   claudeCodeSettingsPath,
+  launchEnv,
   launchSettingsArgs,
   resolveClaudeCodeModels,
   restoreClaudeCode,
@@ -80,7 +81,7 @@ describe("Claude Code settings connect", () => {
     const env = claudeCodeEnv({ port: 8787, models: ["jevonian/auto"] });
     const args = launchSettingsArgs({ ...env, ENABLE_TOOL_SEARCH: "true" }, home);
     expect(args[0]).toBe("--settings");
-    const written = JSON.parse(readFileSync(args[1]!, "utf8")) as {
+    const written = JSON.parse(args[1]!) as {
       env: Record<string, string>;
       statusLine?: unknown;
     };
@@ -89,14 +90,31 @@ describe("Claude Code settings connect", () => {
     expect(written.env.ENABLE_TOOL_SEARCH).toBe("true");
   });
 
+  it("drops the desktop app's entrypoint so the launch signs in with Jevo's token", () => {
+    const env = launchEnv(
+      { PATH: "/bin", CLAUDE_CODE_ENTRYPOINT: "claude-desktop" },
+      claudeCodeEnv({ port: 8787, models: ["jevonian/auto"] }),
+    );
+    expect(env.CLAUDE_CODE_ENTRYPOINT).toBeUndefined();
+    expect(env.ANTHROPIC_AUTH_TOKEN).toBe("jevonian-local");
+    expect(env.PATH).toBe("/bin");
+  });
+
   it("adds the skill-router hook to the launch settings unless JEVO_SKILL_ROUTER=off", () => {
     const hookCommand = (args: string[]) => {
-      const written = JSON.parse(readFileSync(args[1]!, "utf8")) as {
+      const written = JSON.parse(args[1]!) as {
         hooks?: { UserPromptSubmit?: Array<{ hooks: Array<{ command: string }> }> };
       };
       return written.hooks?.UserPromptSubmit?.[0]?.hooks[0]?.command;
     };
     expect(hookCommand(launchSettingsArgs({}, home))).toMatch(/" skillroute$/);
+    const hooks = (
+      JSON.parse(launchSettingsArgs({}, home)[1]!) as {
+        hooks: { SessionStart: Array<{ matcher: string; hooks: Array<{ command: string }> }> };
+      }
+    ).hooks;
+    expect(hooks.SessionStart[0]?.matcher).toBe("compact");
+    expect(hooks.SessionStart[0]?.hooks[0]?.command).toMatch(/" skillroute$/);
     vi.stubEnv("JEVO_SKILL_ROUTER", "off");
     expect(hookCommand(launchSettingsArgs({}, home))).toBeUndefined();
   });

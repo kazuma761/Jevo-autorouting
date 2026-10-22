@@ -5,7 +5,8 @@ ranking silently omits whatever the agent is most likely to reach for in a proje
 
   user    ``<config>/skills/<name>/SKILL.md``                       -> ``<name>``
   plugin  ``<installPath>/skills/<name>/SKILL.md`` for each plugin  -> ``<plugin>:<name>``
-          that ``settings.json`` marks enabled
+          that ``settings.json`` marks enabled, plus the skill
+          paths its ``.claude-plugin/plugin.json`` declares
   project ``.claude/skills/<name>/SKILL.md`` from cwd up to the     -> ``<name>``
           repository root
 
@@ -192,12 +193,13 @@ def enabled_plugins(settings_paths: Sequence[Path]) -> dict[str, bool]:
 
 
 def enabled_plugin_dirs(
-    manifest: Path | None, settings_paths: Sequence[Path]
+    manifest: Path | None, settings_paths: Sequence[Path], cwd: Path | None = None
 ) -> list[tuple[str, Path]]:
     """``(plugin-name, installPath)`` for every plugin the settings chain marks enabled.
 
     Plugin ids are ``<name>@<marketplace>``; the roster name uses only ``<name>``, which is
-    how the Skill tool addresses a plugin skill.
+    how the Skill tool addresses a plugin skill. A plugin installed more than once (user scope
+    plus a project scope) resolves to the project install covering ``cwd``, else the user one.
     """
     installed = _read_json(manifest)
     enabled = enabled_plugins(settings_paths)
@@ -207,12 +209,50 @@ def enabled_plugin_dirs(
     for plugin_id, entries in sorted(installed["plugins"].items()):
         if enabled.get(plugin_id) is not True or not isinstance(entries, list) or not entries:
             continue
-        install_path = (entries[0] or {}).get("installPath")
+        install_path = (_install_entry(entries, cwd) or {}).get("installPath")
         plugin_name = plugin_id.split("@", 1)[0]
         if not install_path or not _SKILL_NAME_RE.match(plugin_name):
             continue
         out.append((plugin_name, Path(install_path)))
     return out
+
+
+def _install_entry(entries: list, cwd: Path | None) -> dict | None:
+    """The install Claude Code loads in ``cwd``: a project install covering it, else user scope.
+
+    Taking the first entry picked a stale project install of neon-postgres that lacks a skill
+    the user-scope install has (observed 2026-10-20)."""
+    dicts = [entry for entry in entries if isinstance(entry, dict)]
+    here = cwd.resolve() if cwd is not None else None
+    for entry in dicts:
+        project = entry.get("projectPath")
+        if here is not None and isinstance(project, str) and project:
+            if here.is_relative_to(Path(project).resolve()):
+                return entry
+    return next((e for e in dicts if e.get("scope") == "user"), dicts[0] if dicts else None)
+
+
+def plugin_skill_paths(install_path: Path) -> list[Path]:
+    """``skills/`` plus the ``skills`` paths the plugin's own manifest declares.
+
+    Claude Code reads ``.claude-plugin/plugin.json`` ``skills`` (one path or a list) on top of
+    the default directory; mattpocock-skills lists ``./skills/productivity/grilling``-style
+    folders and cole-medin points at ``./.claude/skills``, so a ``skills/`` scan alone found
+    none of their skills (observed 2026-10-20). Each path is a skill folder (it holds a
+    SKILL.md) or a directory of them, and must stay inside the install.
+    """
+    declared = _read_json(install_path / ".claude-plugin" / "plugin.json").get("skills")
+    if isinstance(declared, str):
+        declared = [declared]
+    paths = [install_path / "skills"]
+    root = install_path.resolve()
+    for item in declared if isinstance(declared, list) else []:
+        if not isinstance(item, str):
+            continue
+        path = (install_path / item).resolve()
+        if path.is_relative_to(root) and path not in paths:
+            paths.append(path)
+    return paths
 
 
 def project_claude_dirs(cwd: Path | None) -> list[Path]:
@@ -278,10 +318,18 @@ def build_roster(
         for skill in _scan_skills_dir(user_skills_dir, "user", skip_dirs=_SKIPPED_USER_DIRS):
             merged[skill.name] = skill
     for plugin_name, install_path in enabled_plugin_dirs(
-        plugins_manifest, settings_chain(settings_path, cwd)
+        plugins_manifest, settings_chain(settings_path, cwd), cwd
     ):
-        for skill in _scan_skills_dir(install_path / "skills", "plugin", prefix=f"{plugin_name}:"):
-            merged[skill.name] = skill
+        prefix = f"{plugin_name}:"
+        for path in plugin_skill_paths(install_path):
+            if (path / "SKILL.md").is_file():
+                if _SKILL_NAME_RE.match(path.name):
+                    skill = _load_skill(path / "SKILL.md", f"{prefix}{path.name}", "plugin")
+                    if skill is not None:
+                        merged[skill.name] = skill
+                continue
+            for skill in _scan_skills_dir(path, "plugin", prefix=prefix):
+                merged[skill.name] = skill
     # Outermost first, so the `.claude/skills` nearest the cwd is the one that wins — the
     # same way Claude Code resolves a name when a repo nests another one inside it.
     for directory in reversed(project_skill_dirs(cwd)):

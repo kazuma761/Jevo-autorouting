@@ -75,6 +75,9 @@ describe("renderStatusLine", () => {
 
   it("says when it is waiting, when Jev was unavailable, and when a request failed", () => {
     expect(plain(renderStatusLine(input, undefined))).toContain("waiting for the first prompt");
+    expect(plain(renderStatusLine(input, routed("a"), "ponytail:ponytail-review"))).toContain(
+      "· skill ponytail:ponytail-review ·",
+    );
     expect(plain(renderStatusLine(input, routed("a", { brain: "heuristic" })))).toContain(
       "heuristic (Jev unavailable)",
     );

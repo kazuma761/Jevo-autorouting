@@ -364,27 +364,41 @@ export function launchSettingsArgs(env: Record<string, string>, cwd = process.cw
   if (cli && !process.env.JEVO_NO_STATUSLINE && !configured) {
     settings.statusLine = { type: "command", command: `"${process.execPath}" "${cli}" statusline` };
   }
-  // jev-skill-router (`jevonian skillroute`): Jev names the installed skill that fits the
-  // prompt, one line in the turn's context. Separate from model routing; JEVO_SKILL_ROUTER=off.
+  // jev-skill-router (`jevonian skillroute`): Jev picks the installed skill that fits the
+  // prompt and its SKILL.md is loaded into the turn. Separate from model routing; JEVO_SKILL_ROUTER=off.
   if (cli && process.env.JEVO_SKILL_ROUTER !== "off") {
+    const hook = {
+      type: "command",
+      command: `"${process.execPath}" "${cli}" skillroute`,
+      timeout: 8,
+    };
+    // After compaction the loaded skill's text is gone; the next prompt reviews and reloads it.
     settings.hooks = {
-      UserPromptSubmit: [
-        {
-          hooks: [
-            {
-              type: "command",
-              command: `"${process.execPath}" "${cli}" skillroute`,
-              timeout: 8,
-            },
-          ],
-        },
-      ],
+      UserPromptSubmit: [{ hooks: [hook] }],
+      SessionStart: [{ matcher: "compact", hooks: [hook] }],
     };
   }
-  const file = join(dataDir(), "claude-launch-settings.json");
-  mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, `${JSON.stringify(settings)}\n`, { mode: 0o600 });
-  return ["--settings", file];
+  // Inline JSON, not a shared file: two sessions launched with different options would
+  // overwrite each other's file. Nothing secret is in it (the local token is fixed).
+  return ["--settings", JSON.stringify(settings)];
+}
+
+/**
+ * Inherited from a parent Claude Code session (a tmux server started by the desktop app),
+ * `CLAUDE_CODE_ENTRYPOINT=claude-desktop` makes the launched session sign in like the desktop
+ * app instead of with `ANTHROPIC_AUTH_TOKEN`, and Jevo answered 401 on every turn. A binary
+ * search over that tmux env found it alone causes this (2026-10-21); Claude Code sets it anew.
+ */
+const OUTRANKING_AUTH = ["CLAUDE_CODE_ENTRYPOINT"];
+
+/** The launched session's environment: the shell's, minus outranking sign-ins, plus Jevo's. */
+export function launchEnv(
+  base: NodeJS.ProcessEnv,
+  jevoEnv: Record<string, string>,
+): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...base, ...jevoEnv };
+  for (const name of OUTRANKING_AUTH) delete env[name];
+  return env;
 }
 
 /**
@@ -413,7 +427,7 @@ export async function launchClaudeCode(options: ClaudeCodeLaunchOptions): Promis
     ...launchSettingsArgs(jevoEnv),
     ...(options.args ?? []),
   ];
-  const env = { ...process.env, ...jevoEnv };
+  const env = launchEnv(process.env, jevoEnv);
 
   return await new Promise<number>((resolve, reject) => {
     const child = spawn(claudePath, args, {

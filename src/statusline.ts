@@ -12,6 +12,7 @@
 import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 
 import { ledgerPath } from "./paths";
+import { loadedSkill } from "./skillroute";
 
 /** The ledger fields the status line reads. */
 export interface StatusRecord {
@@ -111,7 +112,11 @@ function seconds(ms: number | undefined): string {
 }
 
 /** One status line: the routed model and why, then the folder and context use. */
-export function renderStatusLine(input: StatusInput, record: StatusRecord | undefined): string {
+export function renderStatusLine(
+  input: StatusInput,
+  record: StatusRecord | undefined,
+  skill?: string,
+): string {
   const dir = (input.workspace?.current_dir ?? input.cwd ?? "").split(/[\\/]/).pop() ?? "";
   const pct = Math.round(input.context_window?.used_percentage ?? 0);
   const tail = `${DIM}·${RESET} ${dir} ${DIM}· ${pct}% context${RESET}`;
@@ -137,6 +142,7 @@ export function renderStatusLine(input: StatusInput, record: StatusRecord | unde
     parts.push(`pinned ${record.requestedModel ?? ""}`.trim());
   }
   if (record.effort) parts.push(`effort ${record.effort}`);
+  if (skill) parts.push(`skill ${skill}`);
   const took = seconds(record.latencyMs);
   if (took) parts.push(took);
   return `${parts.join(` ${DIM}·${RESET} `)} ${tail}`;
@@ -153,5 +159,5 @@ export async function statusLineCommand(): Promise<void> {
     // Malformed input still gets the waiting line below.
   }
   const record = latestForSession(readLedgerTail(), input.session_id);
-  process.stdout.write(`${renderStatusLine(input, record)}\n`);
+  process.stdout.write(`${renderStatusLine(input, record, loadedSkill(input.session_id))}\n`);
 }
