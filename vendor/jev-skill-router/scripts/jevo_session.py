@@ -1,8 +1,8 @@
 """Jevo's additions to the router: a short skill index, one copy per skill, long prompts,
 and one load per session with a review after compaction or every ``REVIEW_EVERY`` prompts.
 
-Everything here is off unless Jevo sets its variables, so the upstream behaviour is unchanged
-for anyone else running these scripts:
+Duplicate removal and long-prompt clipping always apply. The index and the per-session
+memory need Jevo's variables; without them every fitting prompt loads its skill, as upstream:
 
   JEV_ROUTER_INDEX      path of the short skill index (one line per skill, user-editable)
   JEV_ROUTER_STATE_DIR  directory of per-session state (which skill is loaded, turn count)
@@ -11,7 +11,6 @@ for anyone else running these scripts:
 from __future__ import annotations
 
 import dataclasses
-import hashlib
 import json
 import os
 import re
