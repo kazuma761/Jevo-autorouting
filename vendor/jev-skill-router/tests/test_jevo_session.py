@@ -58,7 +58,9 @@ def skill(home: Path, name: str, description: str, body: str) -> None:
 def main() -> None:
     # Pure helpers.
     assert jevo_session.short_line("a " * 200).endswith("…")
-    assert len(jevo_session.short_line("word " * 100)) <= jevo_session.INDEX_CHARS + 1
+    assert len(jevo_session.short_line("word " * 100)) <= jevo_session.INDEX_CHARS
+    # No space in the first 150 characters (a long URL): still a hard 150, ellipsis included.
+    assert len(jevo_session.short_line("https://example.com/" + "a" * 300)) == jevo_session.INDEX_CHARS
     assert jevo_session.clip_prompt("x" * 10) == "x" * 10
     clipped = jevo_session.clip_prompt("a" * 3000 + "b" * 3000)
     assert clipped.startswith("a" * 2000) and clipped.endswith("b" * 2000) and len(clipped) < 4100
@@ -100,7 +102,7 @@ def main() -> None:
 
         # The index holds short lines; a hand edit survives a rebuild.
         lines = json.loads(index.read_text())
-        assert len(lines["alpha"]["line"]) <= jevo_session.INDEX_CHARS + 1
+        assert len(lines["alpha"]["line"]) <= jevo_session.INDEX_CHARS
         lines["alpha"]["line"] = "MY OWN WORDS"
         index.write_text(json.dumps(lines))
         assert turn("one more", "alpha") == ""

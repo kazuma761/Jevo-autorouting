@@ -37,11 +37,13 @@ _SESSION_RE = re.compile(r"\A[A-Za-z0-9_-]{1,128}\Z")
 
 
 def short_line(description: str) -> str:
-    """The description cut to ``INDEX_CHARS`` at a word boundary."""
+    """The description cut to ``INDEX_CHARS``, ellipsis included, at a word boundary if any."""
     text = " ".join(description.split())
     if len(text) <= INDEX_CHARS:
         return text
-    cut = text[:INDEX_CHARS].rsplit(" ", 1)[0]
+    cut = text[: INDEX_CHARS - 1]
+    if " " in cut:
+        cut = cut.rsplit(" ", 1)[0]
     return cut.rstrip(",;:") + "…"
 
 
