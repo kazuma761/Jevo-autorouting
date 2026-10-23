@@ -169,9 +169,10 @@ How it works, per prompt:
    them `disable-model-invocation` (you run them yourself with `/name`) are left out.
 2. If one fits, its `SKILL.md` is put into the turn, as the Skill tool would load it (cut at
    9,000 characters, with a pointer to read the rest). Claude follows it.
-3. A skill is loaded once per session. Later prompts that fit the same skill add nothing.
-   A prompt that fits a different skill loads that one.
-4. After the conversation is compacted, or every 20 prompts, the next prompt is a **review**:
+3. A skill is loaded once per session. Later prompts add nothing, even if another skill
+   fits them better: the loaded skill only changes at a review (step 4).
+4. After the conversation is compacted, or 20 prompts after the last load or review, the next
+   prompt is a **review**:
    Jev reads the last 3 prompts. The same skill still fits → it is reloaded if compaction
    removed it. Another fits → that one is loaded. Nothing fits → Claude is told to stop
    following the old skill.

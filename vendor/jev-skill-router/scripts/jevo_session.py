@@ -187,19 +187,27 @@ def review_request(payload: Mapping[str, Any], prompt: str) -> str:
 def decide(state: dict[str, Any], picked: str | None, reviewing: bool) -> tuple[str, str | None]:
     """``(action, skill)`` for this turn, and updates ``state`` in place.
 
-    load    put ``skill`` in the turn (new, or re-loaded after compaction)
+    load    put ``skill`` in the turn (the first fit, or a review's new or re-loaded pick)
     drop    tell Claude to stop following ``skill``
-    none    say nothing (no fit, or the fitting skill is already in context)
+    none    say nothing (no fit, or a skill is loaded and no review is due)
+
+    A loaded skill changes only at a review: switching on every prompt would reload skills as
+    prompts flip between them. ``turns`` counts prompts since the last load or review.
     """
     loaded = state.get("loaded")
     compacted = bool(state.get("compacted"))
-    state["turns"] = 0 if reviewing else int(state.get("turns") or 0) + 1
     state["compacted"] = False
+    if loaded and not reviewing:
+        state["turns"] = int(state.get("turns") or 0) + 1
+        return "none", None
     if picked is None:
         if reviewing:
+            state["turns"] = 0
             state["loaded"] = None
             return "drop", loaded
+        state["turns"] = int(state.get("turns") or 0) + 1
         return "none", None
+    state["turns"] = 0
     if picked == loaded and not compacted:
         return "none", None
     state["loaded"] = picked

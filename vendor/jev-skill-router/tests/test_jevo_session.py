@@ -84,14 +84,14 @@ def main() -> None:
         }
         jev = FakeJev()
 
-        def turn(prompt: str, target: str | None) -> str:
+        def turn(prompt: str, target: str | None, session: str = "s1") -> str:
             jev.target = target
-            payload = {"session_id": "s1", "cwd": str(home), "prompt": prompt}
+            payload = {"session_id": session, "cwd": str(home), "prompt": prompt}
             out, _ = route.route(json.dumps(payload), env, client=jev)
             return json.loads(out)["hookSpecificOutput"]["additionalContext"] if out else ""
 
-        def state() -> dict:
-            return json.loads((home / "state" / "s1.json").read_text())
+        def state(session: str = "s1") -> dict:
+            return json.loads((home / "state" / f"{session}.json").read_text())
 
         # Loaded once, then silent while it still fits.
         assert '<skill name="alpha">' in turn("review my diff", "alpha")
@@ -106,14 +106,24 @@ def main() -> None:
         assert turn("one more", "alpha") == ""
         assert json.loads(index.read_text())["alpha"]["line"] == "MY OWN WORDS"
 
-        # A different skill fits: it is loaded instead.
-        assert '<skill name="beta">' in turn("now deploy it", "beta")
+        # A different skill fitting a normal prompt does not swap skills: that waits for a
+        # review, or prompts flipping A -> B -> A would load A twice.
+        assert turn("now deploy it", "beta") == ""
+        assert turn("back to the review", "alpha") == ""
+        assert state()["loaded"] == "alpha"
 
-        # Compaction: the next prompt is a review, and a still-fitting skill is loaded again.
+        # Compaction: the next prompt is a review, and the skill that fits now is loaded.
         route.route(json.dumps({"hook_event_name": "SessionStart", "source": "compact", "session_id": "s1"}), env)
         assert state()["compacted"] is True
         assert '<skill name="beta">' in turn("continue the deploy", "beta")
         assert state()["turns"] == 0 and state()["compacted"] is False
+
+        # The 20-prompt count starts at the load, not at the session start: a skill loaded after
+        # 19 prompts that fit nothing is not reviewed on the very next prompt.
+        for i in range(jevo_session.REVIEW_EVERY - 1):
+            assert turn(f"chat {i}", None, "s2") == ""
+        assert '<skill name="alpha">' in turn("review my diff", "alpha", "s2")
+        assert turn("thanks", None, "s2") == "" and state("s2")["loaded"] == "alpha"
 
         # A Jev failure during a review changes nothing.
         for i in range(jevo_session.REVIEW_EVERY):
