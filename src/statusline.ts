@@ -119,7 +119,9 @@ export function renderStatusLine(
 ): string {
   const dir = (input.workspace?.current_dir ?? input.cwd ?? "").split(/[\\/]/).pop() ?? "";
   const pct = Math.round(input.context_window?.used_percentage ?? 0);
-  const tail = `${DIM}·${RESET} ${dir} ${DIM}· ${pct}% context${RESET}`;
+  // The loaded skill sits just before the folder, so it shows on waiting and error lines too.
+  const skillPart = skill ? `${DIM}·${RESET} skill ${skill} ` : "";
+  const tail = `${skillPart}${DIM}·${RESET} ${dir} ${DIM}· ${pct}% context${RESET}`;
 
   if (!record) return `${DIM}⚡ Jevo: waiting for the first prompt${RESET} ${tail}`;
 
@@ -142,7 +144,6 @@ export function renderStatusLine(
     parts.push(`pinned ${record.requestedModel ?? ""}`.trim());
   }
   if (record.effort) parts.push(`effort ${record.effort}`);
-  if (skill) parts.push(`skill ${skill}`);
   const took = seconds(record.latencyMs);
   if (took) parts.push(took);
   return `${parts.join(` ${DIM}·${RESET} `)} ${tail}`;
