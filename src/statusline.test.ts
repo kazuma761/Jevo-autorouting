@@ -75,14 +75,24 @@ describe("renderStatusLine", () => {
 
   it("says when it is waiting, when Jev was unavailable, and when a request failed", () => {
     expect(plain(renderStatusLine(input, undefined))).toContain("waiting for the first prompt");
-    expect(plain(renderStatusLine(input, routed("a"), "ponytail:ponytail-review"))).toContain(
-      "· skill ponytail:ponytail-review ·",
-    );
     expect(plain(renderStatusLine(input, routed("a", { brain: "heuristic" })))).toContain(
       "heuristic (Jev unavailable)",
     );
     expect(plain(renderStatusLine(input, routed("a", { status: 400 })))).toContain(
       "claude-haiku-4-5 failed (HTTP 400)",
+    );
+  });
+
+  it("shows the loaded skill last before the folder, on every kind of line", () => {
+    const skill = "ponytail:ponytail-review";
+    expect(plain(renderStatusLine(input, routed("a"), skill))).toBe(
+      "⚡ Jevo → claude-haiku-4-5 · chat · Jev 98% · effort low · 1.2s · skill ponytail:ponytail-review · Shop-fly · 12% context",
+    );
+    expect(plain(renderStatusLine(input, undefined, skill))).toContain(
+      "· skill ponytail:ponytail-review · Shop-fly",
+    );
+    expect(plain(renderStatusLine(input, routed("a", { status: 400 }), skill))).toContain(
+      "· skill ponytail:ponytail-review · Shop-fly",
     );
   });
 

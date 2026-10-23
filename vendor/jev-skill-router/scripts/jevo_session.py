@@ -1,8 +1,8 @@
 """Jevo's additions to the router: a short skill index, one copy per skill, long prompts,
 and one load per session with a review after compaction or every ``REVIEW_EVERY`` prompts.
 
-Everything here is off unless Jevo sets its variables, so the upstream behaviour is unchanged
-for anyone else running these scripts:
+Duplicate removal and long-prompt clipping always apply. The index and the per-session
+memory need Jevo's variables; without them every fitting prompt loads its skill, as upstream:
 
   JEV_ROUTER_INDEX      path of the short skill index (one line per skill, user-editable)
   JEV_ROUTER_STATE_DIR  directory of per-session state (which skill is loaded, turn count)
@@ -11,7 +11,6 @@ for anyone else running these scripts:
 from __future__ import annotations
 
 import dataclasses
-import hashlib
 import json
 import os
 import re
@@ -37,11 +36,13 @@ _SESSION_RE = re.compile(r"\A[A-Za-z0-9_-]{1,128}\Z")
 
 
 def short_line(description: str) -> str:
-    """The description cut to ``INDEX_CHARS`` at a word boundary."""
+    """The description cut to ``INDEX_CHARS``, ellipsis included, at a word boundary if any."""
     text = " ".join(description.split())
     if len(text) <= INDEX_CHARS:
         return text
-    cut = text[:INDEX_CHARS].rsplit(" ", 1)[0]
+    cut = text[: INDEX_CHARS - 1]
+    if " " in cut:
+        cut = cut.rsplit(" ", 1)[0]
     return cut.rstrip(",;:") + "…"
 
 
@@ -187,19 +188,27 @@ def review_request(payload: Mapping[str, Any], prompt: str) -> str:
 def decide(state: dict[str, Any], picked: str | None, reviewing: bool) -> tuple[str, str | None]:
     """``(action, skill)`` for this turn, and updates ``state`` in place.
 
-    load    put ``skill`` in the turn (new, or re-loaded after compaction)
+    load    put ``skill`` in the turn (the first fit, or a review's new or re-loaded pick)
     drop    tell Claude to stop following ``skill``
-    none    say nothing (no fit, or the fitting skill is already in context)
+    none    say nothing (no fit, or a skill is loaded and no review is due)
+
+    A loaded skill changes only at a review: switching on every prompt would reload skills as
+    prompts flip between them. ``turns`` counts prompts since the last load or review.
     """
     loaded = state.get("loaded")
     compacted = bool(state.get("compacted"))
-    state["turns"] = 0 if reviewing else int(state.get("turns") or 0) + 1
     state["compacted"] = False
+    if loaded and not reviewing:
+        state["turns"] = int(state.get("turns") or 0) + 1
+        return "none", None
     if picked is None:
         if reviewing:
+            state["turns"] = 0
             state["loaded"] = None
             return "drop", loaded
+        state["turns"] = int(state.get("turns") or 0) + 1
         return "none", None
+    state["turns"] = 0
     if picked == loaded and not compacted:
         return "none", None
     state["loaded"] = picked
