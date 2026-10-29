@@ -402,6 +402,19 @@ export function launchEnv(
 }
 
 /**
+ * Agent-team teammates run in panes of the tmux server, and a pane takes the server's
+ * environment, not the lead's, so `launchEnv` never reaches them: a server started from the
+ * desktop app gave every teammate `CLAUDE_CODE_ENTRYPOINT=claude-desktop` and each failed with
+ * "issue with the selected model". `--settings` cannot override it (checked 2026-10-29), so
+ * unset it on the server for panes created from now on. No tmux or no server: a no-op.
+ */
+export function clearTmuxOutrankingAuth(run: typeof spawnSync = spawnSync): void {
+  for (const name of OUTRANKING_AUTH) {
+    run("tmux", ["set-environment", "-g", "-u", name], { stdio: "ignore" });
+  }
+}
+
+/**
  * Spawns Claude Code with Jevo env vars, Ollama-style. Returns the process
  * exit code (or 1 when the binary is missing).
  */
@@ -428,6 +441,7 @@ export async function launchClaudeCode(options: ClaudeCodeLaunchOptions): Promis
     ...(options.args ?? []),
   ];
   const env = launchEnv(process.env, jevoEnv);
+  clearTmuxOutrankingAuth();
 
   return await new Promise<number>((resolve, reject) => {
     const child = spawn(claudePath, args, {
