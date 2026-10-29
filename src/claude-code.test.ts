@@ -9,6 +9,7 @@ import {
   claudeCodeEnv,
   claudeCodeModelLabel,
   claudeCodeSettingsPath,
+  clearTmuxOutrankingAuth,
   launchEnv,
   launchSettingsArgs,
   resolveClaudeCodeModels,
@@ -98,6 +99,16 @@ describe("Claude Code settings connect", () => {
     expect(env.CLAUDE_CODE_ENTRYPOINT).toBeUndefined();
     expect(env.ANTHROPIC_AUTH_TOKEN).toBe("jevonian-local");
     expect(env.PATH).toBe("/bin");
+  });
+
+  it("unsets the desktop app's entrypoint on the tmux server so teammates sign in with Jevo too", () => {
+    const run = vi.fn();
+    clearTmuxOutrankingAuth(run as never);
+    expect(run).toHaveBeenCalledWith(
+      "tmux",
+      ["set-environment", "-g", "-u", "CLAUDE_CODE_ENTRYPOINT"],
+      { stdio: "ignore" },
+    );
   });
 
   it("adds the skill-router hook to the launch settings unless JEVO_SKILL_ROUTER=off", () => {
